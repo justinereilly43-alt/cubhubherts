@@ -1,0 +1,105 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin — Cub Hub Herts</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body data-page="admin">
+<header class="site-header">
+  <div class="header-inner">
+    <img src="assets/images/logo.png" alt="Cub Hub Herts logo" class="header-logo">
+    <div class="site-title">Cub Hub Herts — Admin</div>
+    <p class="site-tagline">Moderate, edit, or delete listings.</p>
+  </div>
+</header>
+<div class="container">
+  <div class="admin-login">
+    <input id="admin-key" type="password" placeholder="Enter admin key" style="flex:1;padding:10px;border:1px solid #e7dede;border-radius:10px">
+    <button id="save-key" class="btn-primary">Save key</button>
+  </div>
+
+  <label>Category
+    <select id="admin-cat">
+      <option value="childcare">Childcare</option>
+      <option value="petcare">Pet Care</option>
+      <option value="homehelp">Home Help</option>
+    </select>
+  </label>
+  <p><button id="load-list" class="btn-primary">Load listings</button></p>
+
+  <table class="admin-table" id="admin-table">
+    <thead>
+      <tr><th>Name</th><th>Town</th><th>Services</th><th>Email</th><th>Website</th><th>Flags</th><th>Photo</th><th>Actions</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+<script>
+const $ = (s, r=document) => r.querySelector(s);
+function getKey(){ return localStorage.getItem('CHH_ADMIN_KEY')||''; }
+function setKey(v){ localStorage.setItem('CHH_ADMIN_KEY', v||''); }
+$('#save-key').onclick = () => setKey($('#admin-key').value.trim());
+$('#admin-key').value = getKey();
+
+async function loadTable(){ 
+  const cat = $('#admin-cat').value;
+  const res = await fetch(`/api/listings?cat=${cat}`, { headers: { 'Cache-Control':'no-cache' } });
+  const data = res.ok ? await res.json() : [];
+  const tbody = $('#admin-table tbody');
+  tbody.innerHTML = '';
+  data.forEach(item => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input value="${item.name||''}" data-field="name" style="width:160px"></td>
+      <td><input value="${item.town||''}" data-field="town" style="width:120px"></td>
+      <td><input value="${(item.services||[]).join(', ')}" data-field="services" style="width:200px"></td>
+      <td><input value="${item.email||''}" data-field="email" style="width:180px"></td>
+      <td><input value="${item.website||''}" data-field="website" style="width:180px"></td>
+      <td><input value="${(item.flags||[]).join(', ')}" data-field="flags" style="width:200px"></td>
+      <td><input value="${item.photo||''}" data-field="photo" style="width:220px"></td>
+      <td class="admin-actions">
+        <button class="btn-primary" data-action="save">Save</button>
+        <button class="btn-danger" data-action="del">Delete</button>
+      </td>`;
+    tr.dataset.id = item.id;
+    tbody.appendChild(tr);
+  });
+}
+$('#load-list').onclick = loadTable;
+
+document.body.addEventListener('click', async (e)=>{
+  if(e.target.dataset.action==='save') {
+    const tr = e.target.closest('tr'); const id = tr.dataset.id; const cat = $('#admin-cat').value;
+    const fields = {};
+    tr.querySelectorAll('input[data-field]').forEach(inp => fields[inp.dataset.field] = inp.value);
+    if(fields.services) fields.services = fields.services.split(',').map(s=>s.trim()).filter(Boolean);
+    if(fields.flags) fields.flags = fields.flags.split(',').map(s=>s.trim()).filter(Boolean);
+    const res = await fetch('/.netlify/functions/admin-update-listing', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-admin-key': getKey()},
+      body: JSON.stringify({ cat, id, patch: fields })
+    });
+    alert(res.ok? 'Saved ✅' : 'Save failed ❌');
+    if(res.ok) loadTable();
+  }
+  if(e.target.dataset.action==='del') {
+    const tr = e.target.closest('tr'); const id = tr.dataset.id; const cat = $('#admin-cat').value;
+    if(!confirm('Delete this listing?')) return;
+    const res = await fetch('/.netlify/functions/admin-delete-listing', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-admin-key': getKey()},
+      body: JSON.stringify({ cat, id })
+    });
+    alert(res.ok? 'Deleted ✅' : 'Delete failed ❌');
+    if(res.ok) loadTable();
+  }
+});
+</script>
+</body>
+</html>
